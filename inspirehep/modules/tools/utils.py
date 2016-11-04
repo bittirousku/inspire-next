@@ -64,6 +64,11 @@ def format_name(author):
     else:
         fname, mname, lname = name.first, name.middle, name.last
 
+    if len(fname) == 1 and '.' not in fname:
+        fname = fname + '.'
+    if len(mname) == 1 and '.' not in mname:
+        mname = mname + '.'
+
     return u'{}{}{}'.format(
         lname,
         ', ' + fname if fname else '',
@@ -119,10 +124,25 @@ def authorlist_with_affiliations(text):
 
     lines = [line for line in text.split('\n') if line]
 
-    # Extract authors:
-    authors = lines.pop(0)
-    authors = authors.replace(' and ', ', ')
-    authors = authors.split(', ')
+
+    # Try to work with badly formatted input
+    # There should be commas between different affiliation ids in author
+    # names and there should be only one affiliation name per line.
+    split_auths_and_affs = split_authors_affs_pattern.search(text)
+    if not split_auths_and_affs:
+        raise AttributeError('Could not find affiliations')
+    authors_raw = split_auths_and_affs.group(1)
+    # ensure comma between affid and next author name:
+    authors_raw = re.sub(r'(\d+)\n(\D)', r'\1, \2', authors_raw)
+    authors_raw = authors_raw.replace('\n', '')
+    # ensure no commas between author name and affids
+    authors_raw = re.sub(r'(\D)\,', r'\1', authors_raw)
+    # ensure space between comma and next author name:
+    authors_raw = re.sub(r'(\d+)\,(\S\D)', r'\1, \2', authors_raw)
+    # ensure no spaces between affids in author names:
+    authors_raw = re.sub(r'(\d+)\,\s(\d+)', r'\1,\2', authors_raw)
+
+    authors = authors_raw.replace(' and ', ', ').split(', ')
 
     # Extract affiliations:
     affiliations = {}
