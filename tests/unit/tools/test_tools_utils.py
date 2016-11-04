@@ -130,7 +130,7 @@ def test_authorlist_with_invalid_affiliation():
         '2 Københavns Universitet'
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(AttributeError):
         authorlist(text)
 
 
@@ -149,3 +149,240 @@ def test_authorlist_ignores_space_between_authors_and_affiliations():
     result = authorlist(text)
 
     assert expected == result
+
+def test_authorlist_bad_author_lines():
+    text = (
+        'A. Aduszkiewicz\n'
+        '1\n'
+        ', Y.X. Ali\n'
+        '1,20\n'
+        ', E I Andronov\n'
+        '20\n'
+        ', Einstein\n'
+        '13,15\n'
+        '\n'
+        '1 CERN\n'
+        '20 DESY\n'
+        '13 ETH ZÜRICH\n'
+        '15 PRINCETON\n'
+    )
+
+    expected = (
+        '100__ $$aAduszkiewicz, A.$$vCERN\n'
+        '700__ $$aAli, Y.X.$$vCERN $$vDESY\n'
+        '700__ $$aAndronov, E. I.$$vDESY\n'
+        '700__ $$aEinstein$$vETH ZÜRICH $$vPRINCETON'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+
+def test_authorlist_no_commas_between_authors():
+    text = (
+        'C. Patrignani\n'
+        '1\n'
+        'K. Agashe\n'
+        '2\n'
+        'G. Aielli\n'
+        '1,\n'
+        '2\n'
+        '1\n'
+        'Universit`a di Bologna and INFN, Dip. Scienze per la '
+        'Qualit`a della Vita, I-47921, Rimini, Italy\n'
+        '2\n'
+        'University of Maryland, Department of Physics, College '
+        'Park, MD 20742-4111, USA'
+    )
+
+    expected = (
+        '100__ $$aPatrignani, C.$$vUniversità di Bologna and INFN, Dip. '
+        'Scienze per la Qualità della Vita, I-47921, Rimini, Italy\n'
+        '700__ $$aAgashe, K.$$vUniversity of Maryland, Department of Physics, '
+        'College Park, MD 20742-4111, USA\n'
+        '700__ $$aAielli, G.$$vUniversità di Bologna and INFN, Dip. Scienze '
+        'per la Qualità della Vita, I-47921, Rimini, Italy $$vUniversity of '
+        'Maryland, Department of Physics, College Park, MD 20742-4111, USA'
+    )
+
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+def test_authorlist_affids_with_dots():
+    text = (
+        'C. Patrignani\n'
+        '1,\n'
+        'K. Agashe\n'
+        '2,\n'
+        'G. Aielli\n'
+        '1,\n'
+        '2\n'
+        '1.\n'
+        'Universit`a di Bologna and INFN, Dip. Scienze per la '
+        'Qualit`a della Vita, I-47921, Rimini, Italy\n'
+        '2.\n'
+        'University of Maryland, Department of Physics, College '
+        'Park, MD 20742-4111, USA'
+    )
+
+    expected = (
+        '100__ $$aPatrignani, C.$$vUniversità di Bologna and INFN, Dip. '
+        'Scienze per la Qualità della Vita, I-47921, Rimini, Italy\n'
+        '700__ $$aAgashe, K.$$vUniversity of Maryland, Department of Physics, '
+        'College Park, MD 20742-4111, USA\n'
+        '700__ $$aAielli, G.$$vUniversità di Bologna and INFN, Dip. Scienze '
+        'per la Qualità della Vita, I-47921, Rimini, Italy $$vUniversity of '
+        'Maryland, Department of Physics, College Park, MD 20742-4111, USA'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+
+def test_authorlist_no_commas_between_affids():
+    text = (
+        'C. Patrignani\n'
+        '1,\n'
+        'K. Agashe\n'
+        '2,\n'
+        'G. Aielli\n'
+        '1\n'
+        '2\n'
+        '1.\n'
+        'Universit`a di Bologna and INFN, Dip. Scienze per la '
+        'Qualit`a della Vita, I-47921, Rimini, Italy\n'
+        '2.\n'
+        'University of Maryland, Department of Physics, College '
+        'Park, MD 20742-4111, USA'
+    )
+
+    with pytest.raises(KeyError):
+        authorlist(text)
+
+def test_authorlist_multiple_affiliations_on_single_line():
+    text = (
+        'A. Aduszkiewicz\n'
+        '1\n'
+        ', Y.X. Ali\n'
+        '1,20\n'
+        ', E I Andronov\n'
+        '20\n'
+        ', Einstein\n'
+        '13,15\n'
+        '\n'
+        '1 CERN\n'
+        '20 DESY\n'
+        '13 ETH ZÜRICH15PRINCETON\n'
+    )
+
+    with pytest.raises(KeyError):
+        authorlist(text)
+
+
+def test_authorlist_space_between_affids():
+    text = (
+        'Y.X. Ali1, 20, E I Andronov20\n'
+        '1 CERN\n'
+        '20 DESY'
+    )
+
+    expected = (
+        '100__ $$aAli, Y.X.$$vCERN $$vDESY\n'
+        '700__ $$aAndronov, E. I.$$vDESY'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+
+def test_authorlist_affiliation_with_numbers_and_letters():
+    text = (
+        'O. Buchmueller\n'
+        '1\n'
+        'K. Agashe\n'
+        '2\n'
+        '\n'
+        '1.\n'
+        'High Energy Physics Group, Blackett Laboratory, Imperial College, '
+        'Prince Consort Road, London SW7 2AZ, UK\n'
+        '2.\n'
+        'University of Maryland, Department of Physics, College Park, '
+        'MD 20742-4111, USA\n'
+    )
+
+    expected = (
+        '100__ $$aBuchmueller, O.$$vHigh Energy Physics Group, Blackett '
+        'Laboratory, Imperial College, Prince Consort Road, London SW7 2AZ, UK\n'
+        '700__ $$aAgashe, K.$$vUniversity of Maryland, Department of Physics, '
+        'College Park, MD 20742-4111, USA'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+def test_authorlist_note_symbols():
+    """Test authors which have some footnote symbols like † and ∗"""
+    text = (
+        'Y.X. Ali†1, 20, E I Andronov20∗\n'
+        '1 CERN\n'
+        '20 DESY'
+    )
+
+    expected = (
+        '100__ $$aAli, Y.X.$$vCERN $$vDESY\n'
+        '700__ $$aAndronov, E. I.$$vDESY'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+def test_authorlist_comma_wrong_position():
+    """Test case when there is comma before affiliation id."""
+    text = (
+        'Y. Bao,\n'
+        '1\n'
+        'and A. Lambrecht,\n'
+        '1,\n'
+        '2\n'
+        '1\n'
+        'Department of Physics, University of Florida, Gainesville, Florida 32611\n'
+        '2\n'
+        'Laboratoire Kastler–Brossel, CNRS, ENS, Universit ́e Pierre et Marie '
+        'Curie case 74, Campus Jussieu, F-75252 Paris Cedex 05, France\n'
+    )
+    expected = (
+        '100__ $$aBao, Y.$$vDepartment of Physics, University of Florida, '
+        'Gainesville, Florida 32611\n'
+        '700__ $$aLambrecht, A.$$vDepartment of Physics, University of '
+        'Florida, Gainesville, Florida 32611 $$vLaboratoire Kastler-Brossel, '
+        'CNRS, ENS, Universit ́e Pierre et Marie Curie case 74, Campus Jussieu, '
+        'F-75252 Paris Cedex 05, France'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')
+
+
+def test_authorlist_when_aff_line_ends_in_number():
+    text = (
+        'T.M. Liss\n'
+        '91\n'
+        'L. Littenberg\n'
+        '92\n'
+        '91.\n'
+        'Division of Science, City College of New York, 160 Convent Avenue, '
+        'New York, NY 10031\n'
+        '92.\n'
+        'Physics Department, Brookhaven National Laboratory, Upton, NY 11973, USA'
+    )
+
+    expected = (
+        '100__ $$aLiss, T.M.$$vDivision of Science, City College of New York, '
+        '160 Convent Avenue, New York, NY 10031\n'
+        '700__ $$aLittenberg, L.$$vPhysics Department, Brookhaven National '
+        'Laboratory, Upton, NY 11973, USA'
+    )
+    result = authorlist(text)
+
+    assert expected == result.encode('utf-8')

@@ -29,6 +29,15 @@ import re
 import six
 from nameparser import HumanName
 
+from refextract.documents.pdf import replace_undesirable_characters
+from refextract.documents.text import wash_line
+
+# Differentiate authors from affiliations:
+# authors have a number after name, affiliations lines start with a number
+split_authors_affs_pattern = re.compile(r'(.*?\d)\n+(\d.*)', flags=re.DOTALL)
+# Differentiate affiliations from one another, line break is required
+split_affs_pattern = re.compile(r'(\d+\.?[\s\t]*.*)\n*', flags=re.UNICODE)
+
 
 def authorlist(text):
     """Call the relevant formatter depending on the existence of affiliations.
@@ -44,13 +53,19 @@ def authorlist(text):
         return ''
     if not isinstance(text, six.text_type):
         text = text.decode('utf-8')
+    # Do some pre-cleaning of the input string
+    text = text.replace('\r', '')  # Input from the form contains unwanted \r's
+    text = text.replace(u'†', '')
+    text = text.replace(u'∗', '')
+    text = re.sub(r'(\n+)', r'\n', text)
+    text = replace_undesirable_characters(text)
+    text = wash_line(text)
+
 
     # Assume that if there are numbers in author name, they are affilation ids.
     # Also assume that if one author has an affiliation, everyone else has too.
-    text = text.replace('\r', '')  # Input from the form contains unwanted \r's
-    if re.search(r'\w+\d+', text):
+    if re.search(r'([a-zA-Z_-]+[\n]*\d+)', text):
         return authorlist_with_affiliations(text)
-
     return authorlist_without_affiliations(text)
 
 
@@ -78,7 +93,7 @@ def format_name(author):
 
 def authorlist_without_affiliations(text):
     """Return a MARC format string of authors without affiliations."""
-    authors = text.split(', ')
+    authors = text.replace(' and ', ', ').split(', ')
     first_author = authors.pop(0)
     marc = u'100__ $$a{}\n'.format(format_name(first_author))
     for author in authors:
@@ -95,10 +110,10 @@ def authorlist_with_affiliations(text):
             name, affs = re.search(
                 r'(.+?)(\d+\,*\d*)', author, flags=re.UNICODE
             ).groups()
-        except AttributeError:
+        except AttributeError:  # FIXME: test missing
             raise
         fullname = format_name(name)
-        aff_ids = affs.split(',')
+        aff_ids = [aff for aff in affs.split(',') if aff.isdigit()]
 
         return fullname, aff_ids
 
@@ -106,7 +121,7 @@ def authorlist_with_affiliations(text):
         """Get MARC line of the format '100__ $$aDurães, F.$$vCERN'."""
         try:
             fullname, aff_ids = parse_author_string(author)
-        except AttributeError:
+        except AttributeError:  # FIXME test missing
             raise AttributeError('Cannot parse author name', author)
         try:
             affstring = ' '.join(
@@ -122,9 +137,6 @@ def authorlist_with_affiliations(text):
 
         return u'{}__ $$a{}{}\n'.format(marcfield, fullname, affstring)
 
-    lines = [line for line in text.split('\n') if line]
-
-
     # Try to work with badly formatted input
     # There should be commas between different affiliation ids in author
     # names and there should be only one affiliation name per line.
@@ -135,22 +147,27 @@ def authorlist_with_affiliations(text):
     # ensure comma between affid and next author name:
     authors_raw = re.sub(r'(\d+)\n(\D)', r'\1, \2', authors_raw)
     authors_raw = authors_raw.replace('\n', '')
-    # ensure no commas between author name and affids
+    # ensure no comma between author name and its affids
     authors_raw = re.sub(r'(\D)\,', r'\1', authors_raw)
     # ensure space between comma and next author name:
     authors_raw = re.sub(r'(\d+)\,(\S\D)', r'\1, \2', authors_raw)
-    # ensure no spaces between affids in author names:
+    # ensure no spaces between affids of an author
     authors_raw = re.sub(r'(\d+)\,\s(\d+)', r'\1,\2', authors_raw)
 
     authors = authors_raw.replace(' and ', ', ').split(', ')
 
     # Extract affiliations:
+    affs_raw = split_auths_and_affs.group(2)
+    affs_list = split_affs_pattern.findall(affs_raw)
+    affs_list = [aff.replace('\n', ' ').strip() for aff in affs_list]
     affiliations = {}
-    for aff in lines:
+    for aff in affs_list:
         try:
-            key, value = aff.split(' ', 1)
-            affiliations[key] = value
-        except ValueError:
+            # Note that affiliation may contain numbers
+            aff_id, aff_name = re.search(r'^(\d+)\.?\s?(.*)$', aff).groups()
+            affiliations[aff_id] = aff_name
+            # import ipdb; ipdb.set_trace()
+        except (ValueError, AttributeError):  # FIXME: test missing
             raise ValueError('Cannot parse affiliation ', aff)
 
     try:
